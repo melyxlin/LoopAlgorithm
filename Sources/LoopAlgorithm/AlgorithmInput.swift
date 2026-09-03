@@ -34,4 +34,9 @@ public protocol AlgorithmInput {
     var recommendationType: DoseRecommendationType { get }
     var automaticBolusApplicationFactor: Double? { get } // Defaults to 0.4
     var gradualTransitionsThreshold: Double? { get }
+    var negativeInsulinDamper: Double? { get } // Optional negative-insulin-damper coefficient in [0,1]; nil = disabled
+}
+
+public extension AlgorithmInput {
+    var negativeInsulinDamper: Double? { nil }
 }
