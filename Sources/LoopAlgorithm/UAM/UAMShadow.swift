@@ -222,6 +222,25 @@ enum UAMShadow {
         return endEffect - startEffect
     }
 
+    static func futureGlucoseImpacts(
+        from effects: [GlucoseEffect]
+    ) -> [Double] {
+        guard effects.count >= 2 else {
+            return []
+        }
+
+        let sorted = effects.sorted {
+            $0.startDate < $1.startDate
+        }
+
+        return zip(sorted, sorted.dropFirst()).map { start, end in
+            insulinImpact(
+                from: start,
+                to: end
+            )
+        }
+    }
+
     static func deviationSamples(
         buckets: [GlucoseBucket],
         insulinEffects: [GlucoseEffect]
