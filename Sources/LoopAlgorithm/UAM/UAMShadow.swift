@@ -19,7 +19,8 @@ enum UAMShadow {
 
         let maxToRemove = series.count - lookback
 
-        let reversedSeries = series
+        let reversedSeries =
+            series
             .map { jsRounded($0, scale: 0) }
             .reversed()
 
@@ -72,15 +73,17 @@ enum UAMShadow {
         let multiplier = pow(10.0, Double(scale))
         return floor(value * multiplier + 0.5) / multiplier
     }
-    
+
     static func currentUnannouncedGlucoseImpact(
         trend: GlucoseTrend,
         insulinEffects: [GlucoseEffect]
     ) -> Double? {
-        guard let insulinImpact = insulinImpact(
-            at: trend.date,
-            effects: insulinEffects
-        ) else {
+        guard
+            let insulinImpact = insulinImpact(
+                at: trend.date,
+                effects: insulinEffects
+            )
+        else {
             return nil
         }
 
@@ -91,44 +94,44 @@ enum UAMShadow {
         )
     }
     static func conservativeGlucoseDelta(
-            delta: Double,
-            shortAverageDelta: Double
-        ) -> Double {
-            min(delta, shortAverageDelta)
-        }
+        delta: Double,
+        shortAverageDelta: Double
+    ) -> Double {
+        min(delta, shortAverageDelta)
+    }
     static func unannouncedGlucoseImpact(
-           delta: Double,
-           shortAverageDelta: Double,
-           insulinImpact: Double
-       ) -> Double {
-           jsRounded(
-               conservativeGlucoseDelta(
-                   delta: delta,
-                   shortAverageDelta: shortAverageDelta
-               ) - insulinImpact,
-               scale: 1
-           )
-       }
+        delta: Double,
+        shortAverageDelta: Double,
+        insulinImpact: Double
+    ) -> Double {
+        jsRounded(
+            conservativeGlucoseDelta(
+                delta: delta,
+                shortAverageDelta: shortAverageDelta
+            ) - insulinImpact,
+            scale: 1
+        )
+    }
     static func forecastedUnannouncedGlucoseImpact(
-            initialImpact: Double,
-            slopeFromDeviations: Double,
-            tick: Int
-        ) -> Double {
-            let ticksInThreeHours = 36.0
-            let tick = Double(tick)
+        initialImpact: Double,
+        slopeFromDeviations: Double,
+        tick: Int
+    ) -> Double {
+        let ticksInThreeHours = 36.0
+        let tick = Double(tick)
 
-            let slopeProjection = max(
-                0,
-                initialImpact + tick * slopeFromDeviations
-            )
+        let slopeProjection = max(
+            0,
+            initialImpact + tick * slopeFromDeviations
+        )
 
-            let linearDecay = max(
-                0,
-                initialImpact * (1 - tick / ticksInThreeHours)
-            )
+        let linearDecay = max(
+            0,
+            initialImpact * (1 - tick / ticksInThreeHours)
+        )
 
-            return min(slopeProjection, linearDecay)
-        }
+        return min(slopeProjection, linearDecay)
+    }
 
     static func deviationSlope(
         slopeFromMaxDeviation: Double,
@@ -139,13 +142,13 @@ enum UAMShadow {
             -jsRounded(slopeFromMinDeviation, scale: 2) / 3
         )
     }
-    
+
     static func averageDelta(
         from buckets: [GlucoseBucket],
         at index: Int
     ) -> Double? {
         guard index >= 0,
-              index + 3 < buckets.count
+            index + 3 < buckets.count
         else {
             return nil
         }
@@ -157,12 +160,12 @@ enum UAMShadow {
     }
 
     static func insulinImpact(
-          from startEffect: GlucoseEffect,
-          to endEffect: GlucoseEffect
-      ) -> Double {
-          endEffect.quantity.doubleValue(for: .milligramsPerDeciliter)
-              - startEffect.quantity.doubleValue(for: .milligramsPerDeciliter)
-      }
+        from startEffect: GlucoseEffect,
+        to endEffect: GlucoseEffect
+    ) -> Double {
+        endEffect.quantity.doubleValue(for: .milligramsPerDeciliter)
+            - startEffect.quantity.doubleValue(for: .milligramsPerDeciliter)
+    }
 
     static func interpolatedInsulinEffect(
         at date: Date,
@@ -176,8 +179,9 @@ enum UAMShadow {
             return exact.quantity.doubleValue(for: .milligramsPerDeciliter)
         }
 
-        guard let upperIndex = effects.firstIndex(where: { $0.startDate > date }),
-              upperIndex > effects.startIndex
+        guard
+            let upperIndex = effects.firstIndex(where: { $0.startDate > date }),
+            upperIndex > effects.startIndex
         else {
             return nil
         }
@@ -208,22 +212,35 @@ enum UAMShadow {
     ) -> Double? {
         let fiveMinutesAgo = date.addingTimeInterval(-5 * 60)
 
-        guard let startEffect = interpolatedInsulinEffect(
-            at: fiveMinutesAgo,
-            effects: effects
-        ),
-        let endEffect = interpolatedInsulinEffect(
-            at: date,
-            effects: effects
-        ) else {
+        guard
+            let startEffect = interpolatedInsulinEffect(
+                at: fiveMinutesAgo,
+                effects: effects
+            ),
+            let endEffect = interpolatedInsulinEffect(
+                at: date,
+                effects: effects
+            )
+        else {
             return nil
         }
 
         return endEffect - startEffect
     }
 
+    static func carbImpact(
+        at date: Date,
+        effects: [GlucoseEffect]
+    ) -> Double? {
+        insulinImpact(
+            at: date,
+            effects: effects
+        )
+    }
+
     static func futureGlucoseImpacts(
-        from effects: [GlucoseEffect]
+        from effects: [GlucoseEffect],
+        startingAt referenceDate: Date
     ) -> [Double] {
         guard effects.count >= 2 else {
             return []
@@ -233,12 +250,37 @@ enum UAMShadow {
             $0.startDate < $1.startDate
         }
 
-        return zip(sorted, sorted.dropFirst()).map { start, end in
-            insulinImpact(
-                from: start,
-                to: end
-            )
+        guard let lastDate = sorted.last?.startDate,
+              referenceDate <= lastDate
+        else {
+            return []
         }
+
+        let fiveMinutes: TimeInterval = 5 * 60
+        var impacts: [Double] = []
+        var startDate = referenceDate
+
+        while startDate.addingTimeInterval(fiveMinutes) <= lastDate {
+            let endDate = startDate.addingTimeInterval(fiveMinutes)
+
+            guard
+                let startEffect = interpolatedInsulinEffect(
+                    at: startDate,
+                    effects: sorted
+                ),
+                let endEffect = interpolatedInsulinEffect(
+                    at: endDate,
+                    effects: sorted
+                )
+            else {
+                break
+            }
+
+            impacts.append(endEffect - startEffect)
+            startDate = endDate
+        }
+
+        return impacts
     }
 
     static func deviationSamples(
@@ -254,16 +296,23 @@ enum UAMShadow {
         for index in 0..<(buckets.count - 3) {
             let bucket = buckets[index]
 
-            guard let averageDelta = averageDelta(
-                from: buckets,
-                at: index
-            ),
-            let insulinImpact = insulinImpact(
-                at: bucket.date,
-                effects: insulinEffects
-            ) else {
+            guard
+                let averageDelta = averageDelta(
+                    from: buckets,
+                    at: index
+                ),
+                let rawInsulinImpact = insulinImpact(
+                    at: bucket.date,
+                    effects: insulinEffects
+                )
+            else {
                 continue
             }
+            
+            let insulinImpact = jsRounded(
+                rawInsulinImpact,
+                scale: 2
+            )
 
             samples.append(
                 DeviationSample(
@@ -333,7 +382,7 @@ enum UAMShadow {
             slopeFromMinDeviation
         )
     }
-    
+
     static func forecast(
         startingGlucose: Double,
         glucoseImpactSeries: [Double],
@@ -376,7 +425,7 @@ enum UAMShadow {
             lookback: 13
         )
     }
-    
+
     static func calculate(
         glucose: [GlucoseBucket],
         insulinEffects: [GlucoseEffect],
@@ -385,10 +434,10 @@ enum UAMShadow {
         referenceDate: Date
     ) -> Result? {
         guard let trend = glucoseTrend(from: glucose),
-              let currentUAMImpact = currentUnannouncedGlucoseImpact(
-                  trend: trend,
-                  insulinEffects: insulinEffects
-              )
+            let currentUAMImpact = currentUnannouncedGlucoseImpact(
+                trend: trend,
+                insulinEffects: insulinEffects
+            )
         else {
             return nil
         }
@@ -426,6 +475,8 @@ enum UAMShadow {
             unannouncedGlucoseImpact: currentUAMImpact,
             slopeFromMaxDeviation: slopes.slopeFromMaxDeviation,
             slopeFromMinDeviation: slopes.slopeFromMinDeviation,
+            deviationSamples: samples,
+            bucketCount: buckets.count,
             forecast: prediction,
             duration: uamDuration(
                 unannouncedGlucoseImpact: currentUAMImpact,
@@ -434,15 +485,15 @@ enum UAMShadow {
             )
         )
     }
-    
+
     struct GlucoseTrend {
-           let glucose: Double
-           let date: Date
-           let delta: Double
-           let shortAverageDelta: Double
-           let longAverageDelta: Double
-       }
-    
+        let glucose: Double
+        let date: Date
+        let delta: Double
+        let shortAverageDelta: Double
+        let longAverageDelta: Double
+    }
+
     static func glucoseTrend(
         from glucose: [GlucoseBucket]
     ) -> GlucoseTrend? {
@@ -474,9 +525,8 @@ enum UAMShadow {
                     (currentGlucose + entry.glucose) / 2
 
                 currentDate = Date(
-                    timeIntervalSince1970:
-                        (currentDate.timeIntervalSince1970
-                         + entry.date.timeIntervalSince1970) / 2
+                    timeIntervalSince1970: (currentDate.timeIntervalSince1970
+                        + entry.date.timeIntervalSince1970) / 2
                 )
             } else if minutesAgo > 2.5 && minutesAgo <= 17.5 {
                 let averageDelta =
@@ -506,9 +556,9 @@ enum UAMShadow {
         return GlucoseTrend(
             glucose: currentGlucose,
             date: currentDate,
-            delta: mean(lastDeltas),
-            shortAverageDelta: mean(shortDeltas),
-            longAverageDelta: mean(longDeltas)
+            delta: jsRounded(mean(lastDeltas), scale: 2),
+            shortAverageDelta: jsRounded(mean(shortDeltas), scale: 2),
+            longAverageDelta: jsRounded(mean(longDeltas), scale: 2)
         )
     }
 
@@ -529,15 +579,18 @@ enum UAMShadow {
         let unannouncedGlucoseImpact: Double
         let slopeFromMaxDeviation: Double
         let slopeFromMinDeviation: Double
+        let deviationSamples: [DeviationSample]
+        let bucketCount: Int
         let forecast: [Double]
         let duration: TimeInterval
     }
-    
+
     static func bucketGlucose(
         _ glucose: [GlucoseBucket],
         referenceDate: Date
     ) -> [GlucoseBucket] {
-        let glucoseData = glucose
+        let glucoseData =
+            glucose
             .filter { $0.glucose >= 39 }
             .filter {
                 let age = referenceDate.timeIntervalSince($0.date)
@@ -604,5 +657,90 @@ enum UAMShadow {
         }
 
         return bucketedData
+    }
+}
+
+public extension LoopAlgorithm {
+    struct UAMShadowDeviationSample {
+        public let date: Date
+        public let averageDelta: Double
+        public let insulinImpact: Double
+        public let deviation: Double
+    }
+
+    struct UAMShadowResult {
+        public let currentGlucose: Double
+        public let unannouncedGlucoseImpact: Double
+        public let slopeFromMaxDeviation: Double
+        public let slopeFromMinDeviation: Double
+        public let deviationSamples: [UAMShadowDeviationSample]
+        let bucketCount: Int
+        public let predictedGlucose: [Double]
+        public let duration: TimeInterval
+    }
+
+    static func generateUAMShadowPrediction<GlucoseType: GlucoseValue>(
+        glucoseHistory: [GlucoseType],
+        insulinEffects: [GlucoseEffect],
+        carbEffects: [GlucoseEffect],
+        at referenceDate: Date
+    ) -> UAMShadowResult? {
+        let glucose = glucoseHistory.map {
+            UAMShadow.GlucoseBucket(
+                date: $0.startDate,
+                glucose: $0.quantity.doubleValue(
+                    for: .milligramsPerDeciliter
+                )
+            )
+        }
+
+        let futureGlucoseImpacts: [Double]
+
+        if insulinEffects.allSatisfy({
+            $0.quantity.doubleValue(for: .milligramsPerDeciliter) == 0
+        }) {
+            futureGlucoseImpacts = Array(repeating: 0, count: 48)
+        } else {
+            futureGlucoseImpacts = UAMShadow.futureGlucoseImpacts(
+                from: insulinEffects,
+                startingAt: referenceDate
+            )
+        }
+
+        let carbImpact = UAMShadow.carbImpact(
+            at: referenceDate,
+            effects: carbEffects
+        ) ?? 0
+
+        guard
+            !futureGlucoseImpacts.isEmpty,
+            let result = UAMShadow.calculate(
+                glucose: glucose,
+                insulinEffects: insulinEffects,
+                futureGlucoseImpacts: futureGlucoseImpacts,
+                carbImpact: carbImpact,
+                referenceDate: referenceDate
+            )
+        else {
+            return nil
+        }
+
+        return UAMShadowResult(
+            currentGlucose: result.currentGlucose,
+            unannouncedGlucoseImpact: result.unannouncedGlucoseImpact,
+            slopeFromMaxDeviation: result.slopeFromMaxDeviation,
+            slopeFromMinDeviation: result.slopeFromMinDeviation,
+            deviationSamples: result.deviationSamples.map {
+                UAMShadowDeviationSample(
+                    date: $0.date,
+                    averageDelta: $0.averageDelta,
+                    insulinImpact: $0.insulinImpact,
+                    deviation: $0.deviation
+                )
+            },
+            bucketCount: result.bucketCount,
+            predictedGlucose: result.forecast,
+            duration: result.duration
+        )
     }
 }
