@@ -36,9 +36,19 @@ public protocol AlgorithmInput {
     var gradualTransitionsThreshold: Double? { get }
     var negativeInsulinDamper: Double? { get } // Optional coefficient in [0,1]; nil = disabled
     var emulation: AlgorithmEmulationOptions? { get } // Defaults to nil (no emulation)
+    /// Optional algorithm experiments; the empty set is standard LoopAlgorithm. Conforming types that do
+    /// not provide it get the empty set.
+    var experiments: Set<ExperimentOption> { get }
+    /// The person's volatility baseline for the `guardAndRunway` experiment's volatility band: the median
+    /// σ5 (mg/dL per 5 min) over their last four weeks of glucose, from `GlucoseVolatility.baseline(_:)`.
+    /// When nil it is computed from `glucoseHistory` if that holds at least a day of readings; otherwise
+    /// the band runs at full depth.
+    var volatilityBaseline: Double? { get }
 }
 
 public extension AlgorithmInput {
     var negativeInsulinDamper: Double? { nil }
     var emulation: AlgorithmEmulationOptions? { nil }
+    var experiments: Set<ExperimentOption> { [] }
+    var volatilityBaseline: Double? { nil }
 }
