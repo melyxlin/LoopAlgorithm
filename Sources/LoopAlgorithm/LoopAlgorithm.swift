@@ -179,7 +179,8 @@ public struct Algorithm {
         gradualTransitionsThreshold: Double? = 40.0,
         momentumVelocityMaximumMgdlPerMinute: Double? = nil,
         emulation: AlgorithmEmulationOptions = AlgorithmEmulationOptions(),
-        experiments: Set<ExperimentOption> = []
+        experiments: Set<ExperimentOption> = [],
+        negativeInsulinDamper: Double? = nil
     ) -> LoopPrediction<CarbType> where CarbType: CarbEntry, GlucoseType: GlucoseSampleValue, InsulinDoseType: InsulinDose {
         generatePrediction(
             start: start,
@@ -198,7 +199,8 @@ public struct Algorithm {
             gradualTransitionsThreshold: gradualTransitionsThreshold,
             momentumVelocityMaximum: momentumVelocityMaximumMgdlPerMinute.map { LoopQuantity(unit: .milligramsPerDeciliterPerMinute, doubleValue: $0) },
             emulation: emulation,
-            experiments: experiments
+            experiments: experiments,
+            negativeInsulinDamper: negativeInsulinDamper
         )
     }
 
@@ -219,7 +221,8 @@ public struct Algorithm {
         gradualTransitionsThreshold: Double? = 40.0,
         momentumVelocityMaximum: LoopQuantity? = nil,
         emulation: AlgorithmEmulationOptions = AlgorithmEmulationOptions(),
-        experiments: Set<ExperimentOption> = []
+        experiments: Set<ExperimentOption> = [],
+        negativeInsulinDamper: Double? = nil
     ) -> LoopPrediction<CarbType> where CarbType: CarbEntry, GlucoseType: GlucoseSampleValue, InsulinDoseType: InsulinDose {
 
         var prediction: [PredictedGlucoseValue] = []
@@ -392,6 +395,26 @@ public struct Algorithm {
                 momentum: useMomentum ? momentumEffects : [],
                 effects: effects
             )
+
+            // Negative Insulin Damper: multiply positive prediction deltas by (1 - damper),
+            // leaving negative deltas untouched. The coefficient is computed by the app
+            // and is nil (no-op) unless the experiment is enabled.
+            if let damper = negativeInsulinDamper {
+                let alpha = 1 - damper
+                var dampedPrediction = [PredictedGlucoseValue]()
+                var value = 0.0
+                for (offset, element) in prediction.enumerated() {
+                    if offset == 0 {
+                        value = element.quantity.doubleValue(for: .milligramsPerDeciliter)
+                        dampedPrediction.append(element)
+                        continue
+                    }
+                    let delta = element.quantity.doubleValue(for: .milligramsPerDeciliter) - prediction[offset - 1].quantity.doubleValue(for: .milligramsPerDeciliter)
+                    value += delta > 0 ? alpha * delta : delta
+                    dampedPrediction.append(PredictedGlucoseValue(startDate: element.startDate, quantity: LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: value)))
+                }
+                prediction = dampedPrediction
+            }
 
             // Dosing requires prediction entries at least as long as the insulin model duration.
             // If our prediction is shorter than that, then extend it here.
@@ -914,7 +937,8 @@ public struct Algorithm {
                     carbAbsorptionModel: input.carbAbsorptionModel.model,
                     gradualTransitionsThreshold: input.gradualTransitionsThreshold,
                     emulation: input.emulation ?? AlgorithmEmulationOptions(),
-                    experiments: input.experiments
+                    experiments: input.experiments,
+                    negativeInsulinDamper: input.negativeInsulinDamper
                 )
             }
             prediction = predict(sensitivity: scheduledSensitivity)

@@ -56,12 +56,14 @@ public protocol AlgorithmInput {
     /// When nil it is computed from `glucoseHistory` if that holds at least a day of readings; otherwise
     /// the band runs at full depth.
     var volatilityBaseline: Double? { get }
+    var negativeInsulinDamper: Double? { get } // Optional negative-insulin-damper coefficient in [0,1]; nil = disabled
 }
 
 public extension AlgorithmInput {
     var emulation: AlgorithmEmulationOptions? { nil }
     var experiments: Set<ExperimentOption> { [] }
     var volatilityBaseline: Double? { nil }
+    var negativeInsulinDamper: Double? { nil }
 }
 
 extension AlgorithmInput {
